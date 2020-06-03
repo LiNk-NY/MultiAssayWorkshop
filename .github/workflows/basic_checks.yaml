@@ -1,8 +1,13 @@
 on: push
+defaults:
+  runs-on: ubuntu-latest
+  container: bioconductor/bioconductor_docker:devel
+  run:
+    shell: Rscript {0}
+    working-directory: .
+
 jobs:
   install:
-    runs-on: ubuntu-latest
-    container: bioconductor/bioconductor_docker:devel
     steps:
       - uses: actions/checkout@v1
 
@@ -10,11 +15,8 @@ jobs:
         run: |
           install.packages('remotes')
           saveRDS(remotes::dev_package_deps(dependencies = TRUE), ".github/depends.Rds", version = 2)
-        shell: Rscript {0}
         
   cache:
-    runs-on: ubuntu-latest
-    container: bioconductor/bioconductor_docker:devel
     needs: install
     steps:
       - name: Cache R packages
@@ -26,8 +28,6 @@ jobs:
           restore-keys: ${{ runner.os }}-r-1-
 
   sysdeps:
-    runs-on: ubuntu-latest
-    container: bioconductor/bioconductor_docker:devel
     needs: [install, cache]
     steps:
       # This lets us augment with additional dependencies
@@ -47,8 +47,6 @@ jobs:
         shell: Rscript {0}
 
   checkpkg:
-    runs-on: ubuntu-latest
-    container: bioconductor/bioconductor_docker:devel
     needs: [install, cache, sysdeps]
     steps:
       - name: Check
@@ -58,8 +56,6 @@ jobs:
         shell: Rscript {0}
         
   dockerize:
-    runs-on: ubuntu-latest
-    container: bioconductor/bioconductor_docker:devel
     needs: [install, cache, sysdeps, checkpkg]
     steps:
       - uses: docker/build-push-action@v1
@@ -72,8 +68,6 @@ jobs:
           tags: latest
 
   sitepub:
-    runs-on: ubuntu-latest
-    container: bioconductor/bioconductor_docker:devel
     needs: [install, cache, sysdeps, checkpkg, dockerize]
     steps:
       - name: Build pkgdown
