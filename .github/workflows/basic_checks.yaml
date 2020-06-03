@@ -1,6 +1,6 @@
 on: [push]
 jobs:
-  job1:
+  install:
     runs-on: ubuntu-latest
     container: bioconductor/bioconductor_docker:devel
     steps:
@@ -12,6 +12,11 @@ jobs:
           saveRDS(remotes::dev_package_deps(dependencies = TRUE), ".github/depends.Rds", version = 2)
         shell: Rscript {0}
         
+  cache:
+    runs-on: ubuntu-latest
+    container: bioconductor/bioconductor_docker:devel
+    needs: install
+    steps:
       - name: Cache R packages
         if: runner.os != 'Windows'
         uses: actions/cache@v1
@@ -20,6 +25,11 @@ jobs:
           key: ${{ runner.os }}-r-1-${{ hashFiles('.github/depends.Rds') }}
           restore-keys: ${{ runner.os }}-r-1-
 
+  sysdeps:
+    runs-on: ubuntu-latest
+    container: bioconductor/bioconductor_docker:devel
+    needs: [install, cache]
+    steps:
       # This lets us augment with additional dependencies
       - name: Install system dependencies
         if: runner.os == 'Linux'
@@ -36,12 +46,22 @@ jobs:
           remotes::install_cran("rcmdcheck")
         shell: Rscript {0}
 
+  checkpkg:
+    runs-on: ubuntu-latest
+    container: bioconductor/bioconductor_docker:devel
+    needs: [install, cache, sysdeps]
+    steps:
       - name: Check
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
         run: rcmdcheck::rcmdcheck(args = c("--no-manual"), error_on = "warning", check_dir = "check")
         shell: Rscript {0}
         
+  dockerize:
+    runs-on: ubuntu-latest
+    container: bioconductor/bioconductor_docker:devel
+    needs: [install, cache, sysdeps, checkpkg]
+    steps:
       - uses: docker/build-push-action@v1
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -51,6 +71,11 @@ jobs:
           tag_with_sha: true
           tags: latest
 
+  sitepub:
+    runs-on: ubuntu-latest
+    container: bioconductor/bioconductor_docker:devel
+    needs: [install, cache, sysdeps, checkpkg, dockerize]
+    steps:
       - name: Build pkgdown
         run: |
            PATH=$PATH:$HOME/bin/ Rscript -e 'pkgdown::build_site(".")'
